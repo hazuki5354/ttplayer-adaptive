@@ -19,7 +19,7 @@
             -webkit-user-select: none;
         }
         
-        /* Master Layout Container with User-Adjustable Width */
+        /* Master Layout Container with User-Adjustable Width (Kept from V2) */
         .player-container {
             width: 100%;
             max-width: 480px; /* Default desktop size - fully adjustable */
@@ -32,7 +32,7 @@
             transition: max-width 0.2s ease;
         }
         
-        /* Interactive Width Adjustment Handle Bar for Desktop Viewers */
+        /* Interactive Width Adjustment Handle Bar for Desktop Viewers (Kept from V2) */
         .resize-panel {
             display: flex;
             justify-content: space-between;
@@ -78,7 +78,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             font-family: monospace;
             font-size: 12px;
             color: #8a8a9a;
@@ -101,6 +101,41 @@
             background: #00ffcc;
             cursor: pointer;
         }
+        
+        /* Volume Bar Container Styling */
+        .volume-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #8a8a9a;
+            background-color: #08080a;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #2d2d30;
+        }
+        .volume-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: #2d2d30;
+            outline: none;
+        }
+        /* CHANGED: Volume handle thumb circle to cyan (#00ffcc), matching the play circle */
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #00ffcc;
+            cursor: pointer;
+        }
+
         .playlist-management-bar {
             display: flex;
             background-color: #222226;
@@ -225,7 +260,7 @@
 
         /* Responsive adaptations for strict small screens */
         @media (max-width: 400px) {
-            .resize-panel { display: none; } /* Hide layout scaling controls on actual mobile viewports */
+            .resize-panel { display: none; } 
             body { padding: 10px; }
             .player-container { margin-top: 10px; }
         }
@@ -234,7 +269,7 @@
 <body>
 
     <div id="main-container" class="player-container">
-        <!-- Scale Layout Settings Topbar Control -->
+        <!-- Scale Layout Settings Topbar Control (Kept from V2) -->
         <div class="resize-panel">
             <span>🖥️ PLAYER SIZE PRESET:</span>
             <select class="resize-select" onchange="adjustPlayerSize(this.value)">
@@ -253,6 +288,13 @@
             <span id="time-start">00:00</span>
             <input type="range" id="timeline" class="timeline" value="0" min="0" max="100" oninput="seekAudio(this.value)">
             <span id="time-end">00:00</span>
+        </div>
+
+        <!-- Volume Adjustment Slider Section -->
+        <div class="volume-container">
+            <span>🔈</span>
+            <input type="range" id="volume-slider" class="volume-slider" value="80" min="0" max="100" oninput="adjustVolume(this.value)">
+            <span id="volume-label">80%</span>
         </div>
 
         <div class="playlist-management-bar">
@@ -280,6 +322,7 @@
         let currentIndex = -1;
         let isLooping = false;
         let activeObjectURLs = [];
+        let savedVolume = 0.8;
         
         const audioContext = new Audio();
         const timeline = document.getElementById('timeline');
@@ -288,6 +331,8 @@
         const playlistSelect = document.getElementById('playlist-select');
         const statusMsg = document.getElementById('status-msg');
         const mainContainer = document.getElementById('main-container');
+        const volumeSlider = document.getElementById('volume-slider');
+        const volumeLabel = document.getElementById('volume-label');
 
         // Dynamic Sizing Engine Feature
         function adjustPlayerSize(sizeValue) {
@@ -311,6 +356,7 @@
             const store = transaction.objectStore("appData");
             store.put(allPlaylists, "playlists");
             store.put(currentPlaylistName, "currentPlaylist");
+            store.put(savedVolume, "savedVolume");
             transaction.oncomplete = () => { statusMsg.innerText = "All data safely saved to local browser."; };
         }
 
@@ -327,11 +373,32 @@
                     if (reqCurrent.result && allPlaylists[reqCurrent.result]) {
                         currentPlaylistName = reqCurrent.result;
                     }
-                    rebuildDropdownOptions(currentPlaylistName);
-                    document.getElementById('track-title').innerText = "TTPlayer Adaptive | Ready";
-                    refreshPlaylistTracks();
+                    
+                    const reqVolume = store.get("savedVolume");
+                    reqVolume.onsuccess = () => {
+                        if (reqVolume.result !== undefined) {
+                            savedVolume = reqVolume.result;
+                            audioContext.volume = savedVolume;
+                            volumeSlider.value = Math.round(savedVolume * 100);
+                            volumeLabel.innerText = Math.round(savedVolume * 100) + "%";
+                        }
+                        rebuildDropdownOptions(currentPlaylistName);
+                        document.getElementById('track-title').innerText = "TTPlayer Adaptive | Ready";
+                        refreshPlaylistTracks();
+                    };
                 };
             };
+        }
+
+        // --- VOLUME CONTROL ---
+        function adjustVolume(value) {
+            let volumeFraction = value / 100;
+            audioContext.volume = volumeFraction;
+            savedVolume = volumeFraction;
+            volumeLabel.innerText = value + "%";
+            
+            const transaction = db.transaction(["appData"], "readwrite");
+            transaction.objectStore("appData").put(savedVolume, "savedVolume");
         }
 
         // --- TRACK IMPORT ---
@@ -407,6 +474,7 @@
             activeObjectURLs.push(blobURL);
 
             audioContext.src = blobURL;
+            audioContext.volume = savedVolume;
             audioContext.play().catch(() => {
                 document.getElementById('play-btn').innerText = '▶ PLAY';
             });
@@ -524,6 +592,7 @@
             resetTimeline();
         }
 
+        // --- CONTROLS ---
         function toggleLoop() {
             isLooping = !isLooping;
             audioContext.loop = isLooping;
